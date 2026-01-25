@@ -5,8 +5,10 @@
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <sys/file.h>
+#include <fcntl.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h>
 
 #define SHM_KEY 0x12345
 #define SEM_KEY 0x54321
@@ -15,8 +17,36 @@ struct shm_data {
     char msg[256];
 };
 
+int shmid = -1;
+int semid = -1;
+int lock_fd = -1;
+struct shm_data *shm = NULL;
+
+void cleanup(int sig) {
+    if (shm != NULL)
+        shmdt(shm);
+
+    if (shmid != -1)
+        shmctl(shmid, IPC_RMID, NULL);
+
+    if (semid != -1)
+        semctl(semid, 0, IPC_RMID);
+
+    if (lock_fd != -1) {
+        flock(lock_fd, LOCK_UN);
+        close(lock_fd);
+        unlink("/tmp/lab7_writer.lock");
+    }
+
+    printf("Writer terminated and resources cleaned up.\n");
+    exit(0);
+}
+
 int main() {
-    int lock_fd = open("/tmp/lab7_writer.lock", O_CREAT | O_RDWR, 0666);
+    signal(SIGINT, cleanup);
+    signal(SIGTERM, cleanup);
+
+    lock_fd = open("/tmp/lab7_writer.lock", O_CREAT | O_RDWR, 0666);
     if (lock_fd < 0) {
         perror("open lock");
         exit(1);
@@ -27,24 +57,23 @@ int main() {
         exit(0);
     }
 
-    int shmid = shmget(SHM_KEY, sizeof(struct shm_data), IPC_CREAT | 0666);
+    shmid = shmget(SHM_KEY, sizeof(struct shm_data), IPC_CREAT | 0666);
     if (shmid < 0) {
         perror("shmget");
-        exit(1);
+        cleanup(0);
     }
 
-    struct shm_data *shm = shmat(shmid, NULL, 0);
+    shm = shmat(shmid, NULL, 0);
     if (shm == (void *) -1) {
         perror("shmat");
-        exit(1);
+        cleanup(0);
     }
 
-    int semid = semget(SEM_KEY, 1, IPC_CREAT | 0666);
+    semid = semget(SEM_KEY, 1, IPC_CREAT | 0666);
     if (semid < 0) {
         perror("semget");
-        exit(1);
+        cleanup(0);
     }
-
 
     semctl(semid, 0, SETVAL, 1);
 
@@ -60,9 +89,6 @@ int main() {
                  getpid(), ctime(&t));
 
         semop(semid, &unlock, 1);
-
         sleep(1);
     }
-
-    return 0;
 }

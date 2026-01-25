@@ -133,48 +133,67 @@ static void format_mtime(time_t mtime, char *out, size_t outsz) {
     snprintf(out, outsz, "%s", buf);
 }
 
-/* Print entries in -l format with aligned columns */
 static void print_long(entry_t *arr, size_t cnt, const char *dirpath) {
-    /* compute widths */
     size_t w_links = 0, w_owner = 0, w_group = 0, w_size = 0;
-    for (size_t i=0;i<cnt;i++) {
-        char linksbuf[32]; snprintf(linksbuf, sizeof(linksbuf), "%lu", (unsigned long)arr[i].st.st_nlink);
-        size_t l = strlen(linksbuf); if (l > w_links) w_links = l;
-        struct passwd *pw = getpwuid(arr[i].st.st_uid);
-        struct group *gr = getgrgid(arr[i].st.st_gid);
-        const char *owner = pw?pw->pw_name:"?";
-        const char *group = gr?gr->gr_name:"?";
-        if (strlen(owner) > w_owner) w_owner = strlen(owner);
-        if (strlen(group) > w_group) w_group = strlen(group);
-        char sizebuf[64]; snprintf(sizebuf, sizeof(sizebuf), "%lld", (long long)arr[i].st.st_size);
-        if (strlen(sizebuf) > w_size) w_size = strlen(sizebuf);
-    }
-    /* optionally, print "total" like ls (blocks) */
-    long long total_blocks = 0;
-    for (size_t i=0;i<cnt;i++) total_blocks += arr[i].st.st_blocks;
-    printf("total %lld\n", total_blocks/2); // st_blocks are 512-byte blocks; ls prints 1K blocks — approximation
 
-    for (size_t i=0;i<cnt;i++) {
-        char mode[11]; print_mode(arr[i].st.st_mode, mode);
-        // nlink
+    /* compute widths */
+    for (size_t i = 0; i < cnt; i++) {
+        char buf[32];
+
+        snprintf(buf, sizeof(buf), "%lu",
+                 (unsigned long)arr[i].st.st_nlink);
+        if (strlen(buf) > w_links) w_links = strlen(buf);
+
+        snprintf(buf, sizeof(buf), "%u", arr[i].st.st_uid);
+        if (strlen(buf) > w_owner) w_owner = strlen(buf);
+
+        snprintf(buf, sizeof(buf), "%u", arr[i].st.st_gid);
+        if (strlen(buf) > w_group) w_group = strlen(buf);
+
+        snprintf(buf, sizeof(buf), "%lld",
+                 (long long)arr[i].st.st_size);
+        if (strlen(buf) > w_size) w_size = strlen(buf);
+    }
+
+    /* total */
+    long long total_blocks = 0;
+    for (size_t i = 0; i < cnt; i++)
+        total_blocks += arr[i].st.st_blocks;
+    printf("total %lld\n", total_blocks / 2);
+
+    /* print entries */
+    for (size_t i = 0; i < cnt; i++) {
+        char mode[11];
+        print_mode(arr[i].st.st_mode, mode);
+
         printf("%s ", mode);
-        printf("%*lu ", (int)w_links, (unsigned long)arr[i].st.st_nlink);
-        struct passwd *pw = getpwuid(arr[i].st.st_uid);
-        struct group *gr = getgrgid(arr[i].st.st_gid);
-        const char *owner = pw?pw->pw_name:"?";
-        const char *group = gr?gr->gr_name:"?";
-        printf("%-*s  %-*s  ", (int)w_owner, owner, (int)w_group, group);
-        printf("%*lld ", (int)w_size, (long long)arr[i].st.st_size);
-        char timestr[64]; format_mtime(arr[i].st.st_mtime, timestr, sizeof(timestr));
+        printf("%*lu ",
+               (int)w_links,
+               (unsigned long)arr[i].st.st_nlink);
+
+        printf("%*u  %*u  ",
+               (int)w_owner, arr[i].st.st_uid,
+               (int)w_group, arr[i].st.st_gid);
+
+        printf("%*lld ",
+               (int)w_size,
+               (long long)arr[i].st.st_size);
+
+        char timestr[64];
+        format_mtime(arr[i].st.st_mtime, timestr, sizeof(timestr));
         printf("%s ", timestr);
-        /* color and name */
+
         const char *color = NULL;
         if (arr[i].is_symlink) color = COL_LINK;
         else if (S_ISDIR(arr[i].st.st_mode)) color = COL_DIR;
         else if (arr[i].st.st_mode & S_IXUSR) color = COL_EXEC;
+
         if (color) printf("%s%s%s", color, arr[i].name, COL_RESET);
         else printf("%s", arr[i].name);
-        if (arr[i].is_symlink && arr[i].link_target) printf(" -> %s", arr[i].link_target);
+
+        if (arr[i].is_symlink && arr[i].link_target)
+            printf(" -> %s", arr[i].link_target);
+
         printf("\n");
     }
 }

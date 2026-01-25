@@ -12,9 +12,8 @@ sem_t sem;
 
 void* writer(void* arg) {
     while (1) {
-        sem_wait(&sem);
         snprintf(shared_buf, BUF_SIZE, "Counter: %d", counter++);
-        sem_post(&sem);
+        sem_post(&sem);          // сигнал: данные готовы
         sleep(1);
     }
     return NULL;
@@ -22,11 +21,11 @@ void* writer(void* arg) {
 
 void* reader(void* arg) {
     pthread_t tid = pthread_self();
+
     while (1) {
-        sem_wait(&sem);
-        printf("Reader TID: %lu | Buffer: %s\n", tid, shared_buf);
-        sem_post(&sem);
-        sleep(1);
+        sem_wait(&sem);          // ожидание новых данных
+        printf("Reader TID: %lu | Buffer: %s\n",
+               (unsigned long)tid, shared_buf);
     }
     return NULL;
 }
@@ -34,7 +33,7 @@ void* reader(void* arg) {
 int main() {
     pthread_t w, r;
 
-    sem_init(&sem, 0, 1);
+    sem_init(&sem, 0, 0);        // стартовое значение 0
     memset(shared_buf, 0, BUF_SIZE);
 
     pthread_create(&w, NULL, writer, NULL);

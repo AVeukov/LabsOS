@@ -6,6 +6,7 @@
 #include <sys/sem.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h>
 
 #define SHM_KEY 0x12345
 #define SEM_KEY 0x54321
@@ -14,23 +15,38 @@ struct shm_data {
     char msg[256];
 };
 
+int shmid = -1;
+int semid = -1;
+struct shm_data *shm = NULL;
+
+void cleanup(int sig) {
+    if (shm != NULL)
+        shmdt(shm);
+
+    printf("Reader terminated.\n");
+    exit(0);
+}
+
 int main() {
-    int shmid = shmget(SHM_KEY, sizeof(struct shm_data), 0666);
+    signal(SIGINT, cleanup);
+    signal(SIGTERM, cleanup);
+
+    shmid = shmget(SHM_KEY, sizeof(struct shm_data), 0666);
     if (shmid < 0) {
         printf("Writer is not running. No shared memory.\n");
         exit(1);
     }
 
-    struct shm_data *shm = shmat(shmid, NULL, 0);
+    shm = shmat(shmid, NULL, 0);
     if (shm == (void *) -1) {
         perror("shmat");
         exit(1);
     }
 
-    int semid = semget(SEM_KEY, 1, 0666);
+    semid = semget(SEM_KEY, 1, 0666);
     if (semid < 0) {
         perror("semget");
-        exit(1);
+        cleanup(0);
     }
 
     struct sembuf lock = {0, -1, 0};
@@ -50,6 +66,4 @@ int main() {
 
         sleep(1);
     }
-
-    return 0;
 }
